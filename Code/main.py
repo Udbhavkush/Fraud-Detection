@@ -4,20 +4,12 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import IsolationForest
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import StratifiedKFold
-from sklearn.ensemble import RandomForestClassifier
-# from imblearn.over_sampling import SMOTE
-#from imblearn.pipeline import make_pipeline
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import classification_report, confusion_matrix
-from keras.models import Sequential
-from keras.utils import np_utils
 from keras.layers import LSTM, Dense, Embedding, Dropout,Input, Attention, Layer, Concatenate, Permute, Dot, Multiply, Flatten
 from keras.layers import RepeatVector, Dense, Activation, Lambda
-from keras.models import Sequential
 from keras import backend as K, regularizers, Model, metrics
-from keras.backend import cast
+from sklearn.metrics import recall_score, classification_report, confusion_matrix
+import numpy as np
+
 
 CUR_DIR = os.getcwd()
 PARENT_DIR = os.path.dirname(CUR_DIR)
@@ -52,11 +44,13 @@ print(df_train.dtypes)
 
 df_train["trans_date_trans_time"] = pd.to_datetime(df_train["trans_date_trans_time"])
 df_train["dob"] = pd.to_datetime(df_train["dob"])
-
 df_train.drop(columns=['Unnamed: 0','cc_num','first', 'last', 'street', 'city', 'state', 'zip', 'dob', 'trans_num','trans_date_trans_time'],inplace=True)
-
-
 df_train.dropna(inplace=True)
+
+df_test["trans_date_trans_time"] = pd.to_datetime(df_test["trans_date_trans_time"])
+df_test["dob"] = pd.to_datetime(df_test["dob"])
+df_test.drop(columns=['Unnamed: 0','cc_num','first', 'last', 'street', 'city', 'state', 'zip', 'dob', 'trans_num','trans_date_trans_time'],inplace=True)
+df_test.dropna(inplace=True)
 
 def label_encode(df, type="train"):
 
@@ -125,9 +119,36 @@ outputs=Dense(1,activation='sigmoid')(x2)
 model=Model(inputs,outputs)
 import tensorflow
 model.compile(loss='binary_crossentropy', optimizer='adam', metrics=[tensorflow.keras.metrics.Recall()])
-history=model.fit(train_LSTM_X, Y_train,epochs=200,batch_size=20000)
+history=model.fit(train_LSTM_X, Y_train,epochs=2,batch_size=20000)
 
-#isolation forest
-clf = IsolationForest(contamination=0.1, random_state=42)
+
+clf = IsolationForest(contamination=0.4, random_state=42)
 clf.fit(X_train)
+y_pred = clf.predict(X_train)
+is_anomaly = y_pred == -1
+print(f"Number of anomalies detected: {sum(is_anomaly)}")
 
+if Y_train is not None:
+    print("\nAnomaly detection vs actual labels:")
+    print(f"Total samples: {len(Y_train)}")
+    print(f"Anomalies in class 0: {sum(is_anomaly[Y_train == 0])}")
+    print(f"Anomalies in class 1: {sum(is_anomaly[Y_train == 1])}")
+
+y_pred_binary = np.where(y_pred == -1, 1, 0)
+y_true_binary = np.where(Y_train == 1, 1, 0)
+recall = recall_score(y_true_binary, y_pred_binary)
+print(f"Recall: {recall:.4f}")
+print("\nClassification Report:")
+print(classification_report(y_true_binary, y_pred_binary))
+
+
+y_pred_test = clf.predict(X_test)
+y_pred_binary = (y_pred_test == -1).astype(int)
+recall = recall_score(Y_test, y_pred_binary)
+print(f"Recall: {recall:.4f}")
+print("\nClassification Report:")
+print(classification_report(Y_test, y_pred_binary))
+from sklearn.metrics import confusion_matrix
+cm = confusion_matrix(Y_test, y_pred_binary)
+print("\nConfusion Matrix:")
+print(cm)
